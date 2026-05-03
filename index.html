@@ -177,9 +177,15 @@
     <button class="clear-btn" id="clearBtn" onclick="clearChecked()" style="display:none">완료된 항목 삭제</button>
   </div>
 
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script>
-    const STORAGE_KEY = 'shopping-list';
-    let items = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
+    const SUPABASE_URL = 'https://wdkszhnceouwxfmyjqie.supabase.co';
+    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Indka3N6aG5jZW91d3hmbXlqcWllIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc3ODA5OTcsImV4cCI6MjA5MzM1Njk5N30.vdLa94QEyW4TB3XyBMB5kckOx0aLhX5U2V9RWA1IYqc';
+
+    const { createClient } = supabase;
+    const db = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    let items = [];
 
     const input = document.getElementById('itemInput');
     const list = document.getElementById('list');
@@ -189,10 +195,6 @@
     input.addEventListener('keydown', e => {
       if (e.key === 'Enter') addItem();
     });
-
-    function save() {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
-    }
 
     function render() {
       list.innerHTML = '';
@@ -204,14 +206,14 @@
         return;
       }
 
-      items.forEach((item, i) => {
+      items.forEach(item => {
         const li = document.createElement('li');
         if (item.checked) li.classList.add('checked');
 
         const cb = document.createElement('input');
         cb.type = 'checkbox';
         cb.checked = item.checked;
-        cb.addEventListener('change', () => toggle(i));
+        cb.addEventListener('change', () => toggle(item.id, item.checked));
 
         const span = document.createElement('span');
         span.className = 'item-text';
@@ -221,7 +223,7 @@
         del.className = 'delete-btn';
         del.textContent = '✕';
         del.title = '삭제';
-        del.addEventListener('click', () => remove(i));
+        del.addEventListener('click', () => remove(item.id));
 
         li.appendChild(cb);
         li.appendChild(span);
@@ -234,34 +236,67 @@
       clearBtn.style.display = checked > 0 ? 'block' : 'none';
     }
 
-    function addItem() {
+    async function loadItems() {
+      const { data, error } = await db
+        .from('shopping_items')
+        .select('*')
+        .order('created_at', { ascending: false });
+      if (!error) {
+        items = data;
+        render();
+      }
+    }
+
+    async function addItem() {
       const text = input.value.trim();
       if (!text) return;
-      items.unshift({ text, checked: false });
       input.value = '';
-      save();
-      render();
+      const { data, error } = await db
+        .from('shopping_items')
+        .insert({ text, checked: false })
+        .select()
+        .single();
+      if (!error) {
+        items.unshift(data);
+        render();
+      }
     }
 
-    function toggle(i) {
-      items[i].checked = !items[i].checked;
-      save();
-      render();
+    async function toggle(id, currentChecked) {
+      const { error } = await db
+        .from('shopping_items')
+        .update({ checked: !currentChecked })
+        .eq('id', id);
+      if (!error) {
+        const item = items.find(x => x.id === id);
+        if (item) item.checked = !currentChecked;
+        render();
+      }
     }
 
-    function remove(i) {
-      items.splice(i, 1);
-      save();
-      render();
+    async function remove(id) {
+      const { error } = await db
+        .from('shopping_items')
+        .delete()
+        .eq('id', id);
+      if (!error) {
+        items = items.filter(x => x.id !== id);
+        render();
+      }
     }
 
-    function clearChecked() {
-      items = items.filter(x => !x.checked);
-      save();
-      render();
+    async function clearChecked() {
+      const { error } = await db
+        .from('shopping_items')
+        .delete()
+        .eq('checked', true);
+      if (!error) {
+        items = items.filter(x => !x.checked);
+        render();
+      }
     }
 
-    render();
+    loadItems();
   </script>
 </body>
 </html>
